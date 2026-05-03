@@ -1,6 +1,6 @@
 ﻿@{
     RootModule = '视频工坊.psm1'
-    ModuleVersion = '1.0.1'
+    ModuleVersion = '1.0.2'
     GUID = '00279415-4bd7-49fe-aaf4-721625314781'
     Author = '埃博拉酱'
     CompanyName = '一致行动党'
@@ -33,12 +33,12 @@
 
     PrivateData = @{
         PSData = @{
-            Tags = @('ffmpeg', 'ffprobe', 'mkvmerge', '字幕', '硬字幕', '杜比视界', 'HDR10', 'HEVC', '中文', '视频')
+            Tags = @('ffmpeg', '字幕', '杜比视界', 'HDR10', 'HEVC', '视频合并')
             LicenseUri = 'https://opensource.org/licenses/MIT'
             ProjectUri = 'https://github.com/Ebola-Chan-bot/Video-Workshop'
             IconUri = 'https://raw.githubusercontent.com/Ebola-Chan-bot/Video-Workshop/main/%E5%9B%BE%E6%A0%87.png'
             ReleaseNotes = @'
-扩充 PowerShell Gallery 页面使用的模块描述和发行说明；修复发布脚本清理密钥变量时可能触发参数验证错误的问题。
+优化图标
 '@
         }
     }
