@@ -67,7 +67,7 @@ try {
 
     Write-Host '发布完成。' -ForegroundColor Green
 } finally {
-    $密钥 = $null
+    Remove-Variable -Name '密钥' -Force -ErrorAction SilentlyContinue
     if (Test-Path -LiteralPath $临时发布目录) {
         Remove-Item -LiteralPath $临时发布目录 -Recurse -Force -ErrorAction SilentlyContinue
     }
