@@ -1,0 +1,7 @@
+downloads/
+*.nupkg
+*.zip
+*.tmp
+*.log
+out/
+_ffmpeg_concat_work/
