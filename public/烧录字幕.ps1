@@ -46,6 +46,9 @@
     $ErrorActionPreference = 'Stop'
     $script:输出外部进程信息 = $false
 
+    $输入文件 = 规范化_用户路径参数 -Path $输入文件
+    if ($输出文件) { $输出文件 = 规范化_用户路径参数 -Path $输出文件 }
+
     确保_ffmpeg_ffprobe_可用
 
     if (-not (Test-Path -LiteralPath $输入文件)) {

@@ -5,6 +5,23 @@
     }
 }
 
+function 规范化_用户路径参数 {
+    param([AllowNull()] [string]$Path)
+
+    if ($null -eq $Path) { return $null }
+
+    $路径文本 = $Path.Trim()
+    if ($路径文本.Length -ge 2) {
+        $首字符 = $路径文本[0]
+        $尾字符 = $路径文本[$路径文本.Length - 1]
+        if (($首字符 -eq '"' -and $尾字符 -eq '"') -or ($首字符 -eq "'" -and $尾字符 -eq "'")) {
+            $路径文本 = $路径文本.Substring(1, $路径文本.Length - 2).Trim()
+        }
+    }
+
+    return $路径文本
+}
+
 function 测试_管理员权限 {
     $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
     $p  = New-Object System.Security.Principal.WindowsPrincipal($id)
