@@ -5,3 +5,4 @@ downloads/
 *.log
 out/
 _ffmpeg_concat_work/
+.apikey
