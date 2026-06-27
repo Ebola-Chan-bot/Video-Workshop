@@ -9,7 +9,7 @@
         文本字幕会通过 subtitles 滤镜渲染；位图字幕（DVD/PGS/DVB/XSub）会先缩放到视频尺寸，再通过 overlay 叠加。
         输出中的视频轨一定会重新编码为 HEVC：优先使用 hevc_nvenc（CQ 23），不可用时回退到 libx265（CRF 23、medium）。
 
-        除原第一个视频轨和被烧录的第一个字幕轨外，其它轨道会按原顺序复制到输出文件，例如音频轨、其它字幕轨等。
+        除原第一个视频轨和选定的字幕轨外，其它轨道会按原顺序复制到输出文件，例如音频轨、其它字幕轨等。
         如果未指定输出路径，会在输入文件同目录生成“原文件名_烧录字幕 + 原扩展名”。输出文件已存在时会被覆盖。
 
         输入文件必须至少包含一个视频轨和一个字幕轨；缺少任一轨道时命令会报错。
@@ -20,10 +20,18 @@
     .PARAMETER 输出文件
         输出文件路径。省略时使用输入文件所在目录，并将文件名追加“_烧录字幕”。扩展名沿用输入文件扩展名。
 
+    .PARAMETER 字幕序号
+        要烧录的字幕轨序号，0 表示第一个字幕轨（默认），1 表示第二个字幕轨，依此类推。序号超出范围时会报错。
+
     .EXAMPLE
         烧录字幕 -输入文件 'D:\电影.mkv'
 
         将 D:\电影.mkv 的第一个字幕轨烧录进第一个视频轨，输出 D:\电影_烧录字幕.mkv。
+
+    .EXAMPLE
+        烧录字幕 -输入文件 'D:\电影.mkv' -字幕序号 1
+
+        选择第二个字幕轨烧录进第一个视频轨，其余轨道保留。
 
     .EXAMPLE
         烧录字幕 -输入文件 'D:\电影.mkv' -输出文件 'D:\电影.hardsub.mkv'
@@ -39,7 +47,10 @@
         [string]$输入文件,
 
         [Parameter(Position = 1)]
-        [string]$输出文件
+        [string]$输出文件,
+
+        [Parameter(Position = 2)]
+        [int]$字幕序号 = 0
     )
 
     Set-StrictMode -Version Latest
@@ -70,17 +81,18 @@
 
     if ($视频轨列表.Count -eq 0) { throw '输入文件没有视频轨' }
     if ($字幕轨列表.Count -eq 0) { throw '输入文件没有字幕轨' }
+    if ($字幕序号 -ge $字幕轨列表.Count) { throw "字幕序号 ${字幕序号} 超出了文件中的字幕轨数量（共 $($字幕轨列表.Count) 个字幕轨）。" }
 
     $视频轨 = $视频轨列表[0]
-    $字幕轨 = $字幕轨列表[0]
+    $字幕轨 = $字幕轨列表[$字幕序号]
     $视频序号 = [int]$视频轨.index
-    $字幕序号 = [int]$字幕轨.index
+    $字幕轨全局序号 = [int]$字幕轨.index
     $字幕编码 = [string]$字幕轨.codec_name
     $视频宽 = [int]$视频轨.width
     $视频高 = [int]$视频轨.height
 
     Write-Host "视频轨 #$视频序号 : $($视频轨.codec_name) ${视频宽}x${视频高}" -ForegroundColor Cyan
-    Write-Host "字幕轨 #$字幕序号 : $字幕编码" -ForegroundColor Cyan
+    Write-Host "字幕轨 #$字幕轨全局序号 : $字幕编码" -ForegroundColor Cyan
     Write-Host "输出  : $输出文件" -ForegroundColor Green
 
     if (测试_ffmpeg视频编码器可用 -FfmpegPath 'ffmpeg' -编码器名称 'hevc_nvenc') {
@@ -94,10 +106,10 @@
     $图形字幕编码 = 'dvd_subtitle', 'hdmv_pgs_subtitle', 'dvb_subtitle', 'xsub'
 
     if ($字幕编码 -in $图形字幕编码) {
-        $滤镜 = "[0:$字幕序号]scale=${视频宽}:${视频高}[sub];[0:$视频序号][sub]overlay=eof_action=pass[vout]"
+        $滤镜 = "[0:$字幕轨全局序号]scale=${视频宽}:${视频高}[sub];[0:$视频序号][sub]overlay=eof_action=pass[vout]"
     } else {
         $转义路径 = ($输入文件 -replace '\\', '/') -replace "([\[\]:;,'])", '\$1'
-        $滤镜 = "[0:$视频序号]subtitles='${转义路径}':si=0[vout]"
+        $滤镜 = "[0:$视频序号]subtitles='${转义路径}':si=${字幕序号}[vout]"
     }
 
     $映射参数 = [Collections.Generic.List[string]]::new()
@@ -106,7 +118,7 @@
 
     foreach ($轨 in $全部轨道) {
         $序号 = [int]$轨.index
-        if ($序号 -eq $视频序号 -or $序号 -eq $字幕序号) { continue }
+        if ($序号 -eq $视频序号 -or $序号 -eq $字幕轨全局序号) { continue }
         $映射参数.Add('-map')
         $映射参数.Add("0:$序号")
     }

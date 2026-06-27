@@ -537,7 +537,8 @@ function 测试_ffmpeg视频编码器可用 {
         return $false
     }
 
-    return ($结果.StdOut -match ("(?m)^\s*[A-Z\.]{6}\s+{0}\s" -f [regex]::Escape($编码器名称)))
+    $模式 = "(?m)^\s*[A-Z\.]{6}\s+" + [regex]::Escape($编码器名称) + '\s'
+    return ($结果.StdOut -match $模式)
 }
 
 function 获取_媒体流探测数据 {
