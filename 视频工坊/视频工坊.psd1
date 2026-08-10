@@ -1,6 +1,6 @@
 ﻿@{
 	RootModule = '视频工坊.psm1'
-	ModuleVersion = '1.1.0'
+	ModuleVersion = '1.2.0'
 	GUID = '00279415-4bd7-49fe-aaf4-721625314781'
 	Author = '埃博拉酱'
 	CompanyName = '一致行动党'
