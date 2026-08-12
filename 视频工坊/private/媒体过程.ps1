@@ -510,3 +510,77 @@ function 解析_输入文件列表_来自文本 {
 
 	return ,@($out.ToArray())
 }
+
+function 获取_ISO基础媒体_ftyp偏移 {
+	# 在文件头部字节中查找 ISO Base Media File Format 的 ftyp box（66 74 79 70 'ftyp'）。
+	# 返回 ftyp box 起始偏移：0 表示文件本身就是标准 MP4/M4S；>0 表示前面有填充/混淆字节；-1 表示没找到。
+	param([Parameter(Mandatory)] [byte[]]$Header)
+
+	$limit = $Header.Length - 8
+	for ($i = 0; $i -le $limit; $i++) {
+		if ($Header[$i + 4] -eq 0x66 -and $Header[$i + 5] -eq 0x74 -and $Header[$i + 6] -eq 0x79 -and $Header[$i + 7] -eq 0x70) {
+			# box size 必须是合理正数（大端 4 字节）；ftyp 一般几十字节，放宽到 64KB
+			$size = ([int]$Header[$i] -shl 24) -bor ([int]$Header[$i + 1] -shl 16) -bor ([int]$Header[$i + 2] -shl 8) -bor [int]$Header[$i + 3]
+			if ($size -ge 8 -and $size -le 65536) { return $i }
+		}
+	}
+	return -1
+}
+
+function 还原_B站混淆媒体文件 {
+	<#
+		检测并还原 B站客户端缓存 m4s 的头部混淆：
+		B站会给标准 MP4/M4S 文件头部填充一段 ASCII '0'（0x30）字节，导致普通播放器/ffmpeg 无法直接识别。
+		处理方式是定位真正的 ftyp box，把它前面的填充字节整体剥离，输出一个干净的 .mp4 副本。
+		返回值：可直接用于后续处理/探测的文件路径（无需还原时原样返回输入路径）。
+	#>
+	param(
+		[Parameter(Mandatory)] [string]$Path,
+		[Parameter(Mandatory)] [string]$WorkDir,
+		[Parameter(Mandatory)] [int]$Index
+	)
+
+	$fileLen = [int64](Get-Item -LiteralPath $Path).Length
+	if ($fileLen -lt 16) { return $Path }
+
+	$readLen = [int][math]::Min(65536, $fileLen)
+	$fs = [System.IO.File]::OpenRead($Path)
+	try {
+		$header = New-Object byte[] $readLen
+		[void]$fs.Read($header, 0, $readLen)
+	} finally { $fs.Dispose() }
+
+	$ftypOffset = 获取_ISO基础媒体_ftyp偏移 -Header $header
+	if ($ftypOffset -le 0) { return $Path }
+
+	# 仅当前缀全部是 0x30（B站已知填充）或 0x00 时才视为混淆填充并剥离，避免误伤其它格式。
+	$前缀可清理 = $true
+	for ($i = 0; $i -lt $ftypOffset; $i++) {
+		if ($header[$i] -ne 0x30 -and $header[$i] -ne 0x00) { $前缀可清理 = $false; break }
+	}
+	if (-not $前缀可清理) {
+		Write-Warning ("文件 {0} 头部 {1} 偏移处才发现 ftyp box，但前缀字节不是已知混淆填充，不做剥离。" -f $Path, $ftypOffset)
+		return $Path
+	}
+
+	$cleanName = ("bili_clean_{0:D2}_{1}.mp4" -f $Index, [System.IO.Path]::GetFileNameWithoutExtension($Path))
+	$cleanPath = Join-Path $WorkDir $cleanName
+
+	Write-Host ("检测到 B站混淆格式：{0} 头部有 {1} 字节 0x30 填充，正在还原..." -f [System.IO.Path]::GetFileName($Path), $ftypOffset) -ForegroundColor Yellow
+
+	$inFs = [System.IO.File]::OpenRead($Path)
+	try {
+		$outFs = [System.IO.File]::Create($cleanPath)
+		try {
+			[void]$inFs.Seek($ftypOffset, [System.IO.SeekOrigin]::Begin)
+			$buffer = New-Object byte[] 1MB
+			while ($true) {
+				$read = $inFs.Read($buffer, 0, $buffer.Length)
+				if ($read -le 0) { break }
+				$outFs.Write($buffer, 0, $read)
+			}
+		} finally { $outFs.Dispose() }
+	} finally { $inFs.Dispose() }
+
+	return $cleanPath
+}
