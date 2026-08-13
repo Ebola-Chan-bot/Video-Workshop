@@ -34,8 +34,9 @@ function 转GIF {
 		2 表示放大为两倍。与 -宽度/-高度 互斥。
 
 	.PARAMETER 帧率
-		GIF 帧率（每秒帧数）。0 表示保持原始帧率（默认）；调低可显著减小体积，常用 10~15；
-		指定高于原视频的帧率时会自动插帧补顺。
+		GIF 帧率（每秒帧数），浮点数。0 表示保持原始帧率（默认）；调低可显著减小体积，常用 10~15；
+		指定高于原视频的帧率时会自动插帧补顺。分数写法请用括号表达式传入，如 -帧率 (23.57/5.8)，
+		PowerShell 会先求值再传入。
 
 	.EXAMPLE
 		转GIF -输入文件 'D:\头像.mp4'
@@ -82,8 +83,8 @@ function 转GIF {
 		[ValidateScript({ if ($_ -gt 0) { $true } else { throw '-缩放率 必须是正数（1 不缩放，小于 1 缩小，大于 1 放大）' } })]
 		[double]$缩放率 = 1,
 
-		[ValidateRange(0, 1000)]
-		[int]$帧率 = 0
+		[ValidateRange(0.0, 1000.0)]
+		[double]$帧率 = 0
 	)
 
 	Set-StrictMode -Version Latest
@@ -152,8 +153,11 @@ function 转GIF {
 	$ffmpeg路径 = 解决_工具执行路径 -工具名 'ffmpeg'
 
 	# ── 组装滤镜链（两遍使用同一链，保证调色板与画面一致）────────
+	# ffmpeg fps 滤镜要求小数点为英文句点；用 InvariantCulture 格式化，避免区域设置影响
+	$帧率文本 = $帧率.ToString('0.######', [System.Globalization.CultureInfo]::InvariantCulture)
+
 	$滤镜片段 = @()
-	if ($帧率 -gt 0) { $滤镜片段 += "fps=$帧率" }
+	if ($帧率 -gt 0) { $滤镜片段 += "fps=$帧率文本" }
 	if ($目标宽 -ne $源宽 -or $目标高 -ne $源高) { $滤镜片段 += ("scale={0}:{1}:flags=lanczos" -f $目标宽, $目标高) }
 	$滤镜链 = $滤镜片段 -join ','
 
@@ -166,7 +170,7 @@ function 转GIF {
 	Write-Host ("  输入     : {0}" -f $输入绝对路径)
 	Write-Host ("  视频轨   : {0}  {1}x{2}  时长 {3}s" -f $源编码, $源宽, $源高, ([math]::Round($时长秒, 1)))
 	if ($目标宽 -ne $源宽 -or $目标高 -ne $源高) { Write-Host ("  目标尺寸 : {0}x{1}" -f $目标宽, $目标高) }
-	if ($帧率 -gt 0) { Write-Host ("  帧率     : {0} fps" -f $帧率) }
+	if ($帧率 -gt 0) { Write-Host ("  帧率     : {0} fps" -f $帧率文本) }
 	Write-Host ("  输出     : {0}" -f $输出绝对路径)
 	Write-Host ''
 

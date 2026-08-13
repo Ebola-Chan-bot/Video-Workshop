@@ -722,23 +722,10 @@
 			}
 		}
 
-		# ---- 视频：能 copy 就 copy；否则仅为“本段不符合目标参数”的片段做标准化 ----
-		# H.264/HEVC 标准允许码流中途在 IDR 关键帧处携带新的 SPS/PPS 参数集，即同一条视频轨
-		# 中途变更参数集是合法码流；concat copy 会保留各段自带参数集，规范解码器会在边界重新
-		# 初始化。个别播放器对中途参数集变化支持不佳（花屏/卡顿），按标准执行、不额外全量重编码。
-		$本段视频已符合目标 = $true
-		if ($null -eq $info.Video) { $本段视频已符合目标 = $false }
-		if ($本段视频已符合目标 -and (-not [string]::IsNullOrWhiteSpace($目标视频编码)) -and ($info.Video.Codec -ne $目标视频编码)) { $本段视频已符合目标 = $false }
-		if ($本段视频已符合目标 -and ($info.Video.Width -ne $目标视频宽度)) { $本段视频已符合目标 = $false }
-		if ($本段视频已符合目标 -and ($info.Video.Height -ne $目标视频高度)) { $本段视频已符合目标 = $false }
-		if ($本段视频已符合目标 -and (-not [string]::IsNullOrWhiteSpace($目标视频像素格式)) -and ($info.Video.PixFmt -ne $目标视频像素格式)) { $本段视频已符合目标 = $false }
-		if ($本段视频已符合目标) {
-			$fpsNow = [double]$info.Video.Fps
-			if (-not $fpsNow -or $fpsNow -le 0) { $本段视频已符合目标 = $false }
-			elseif ([math]::Abs($fpsNow - [double]$目标视频帧率数值) -gt 0.0001) { $本段视频已符合目标 = $false }
-		}
-
-		$本段需要标准化视频 = ($需要标准化视频 -and (-not $本段视频已符合目标))
+		# ---- 视频：整体决策。只要任一段不兼容需要重编码，所有段都重编码 ----
+		# concat 要求各视频段 SPS/PPS 参数集一致；若部分段 copy（旧参数集）、部分段重编码
+		# （新参数集），播放器按首段参数集初始化解码器会导致后续段花屏。因此不做逐段 copy 优化。
+		$本段需要标准化视频 = $需要标准化视频
 
 		if ($本段需要标准化视频) {
 			$vfParts = @()
