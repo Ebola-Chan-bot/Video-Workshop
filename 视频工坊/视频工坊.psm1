@@ -22,6 +22,6 @@ if ($持久ffmpeg目录) {
 	$script:自定义ffmpeg目录 = $持久ffmpeg目录
 }
 
-Export-ModuleMember -Function '烧录字幕', 'DV转HDR10', '超级合并', '轨道叠加', '设置ffmpeg路径', '压缩到指定大小'
+Export-ModuleMember -Function '烧录字幕', 'DV转HDR10', '超级合并', '轨道叠加', '设置ffmpeg路径', '压缩到指定大小', '转GIF', '反转视频'
 
 

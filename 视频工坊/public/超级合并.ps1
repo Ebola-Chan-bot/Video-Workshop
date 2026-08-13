@@ -4,9 +4,9 @@
 		按列表或剪贴板顺序合并多个视频片段，兼容时尽量无损 copy。
 
 	.DESCRIPTION
-		读取一组输入文件，按给定顺序生成一个连续输出文件。命令会先探测每段的第一个视频轨、音频轨和字幕轨，再决定走“同构快速路径”或“标准化路径”。
+		读取一组输入文件，按给定顺序生成一个连续输出文件。输入来源三选一：可以直接把文件路径数组作为第一个位置参数传入（-输入文件），此时最优先；也可以传入 -列表文件；两者都不给时才从剪贴板读取。-输入文件 与 -列表文件 不能同时指定。命令会先探测每段的第一个视频轨、音频轨和字幕轨，再决定走“同构快速路径”或“标准化路径”。
 
-		如果没有显式传入 -列表文件，命令会从剪贴板读取文件列表；显式传入 -列表文件 时，会按 UTF-8 文本读取。列表支持一行一个路径、带引号路径，以及ffmpeg concat 形式的 file '路径'；空行和以 # 开头的注释会被忽略。
+		列表文件支持一行一个路径、带引号路径，以及ffmpeg concat 形式的 file '路径'；空行和以 # 开头的注释会被忽略。
 
 		同构快速路径用于流数量相同且每个流索引位置的 codec_type/codec_name 都相同的输入。该路径会先用 mkvmerge 按真实视频包 PTS 精剪每段，再用 ffmpeg 修复 H.264 SPS/PPS 容器元数据并通过 concat demuxer 无损拼接，尽量保留所有轨道。此路径的判定依据是“轨道布局和编码名”，不会进一步比较分辨率、像素格式、帧率等参数；这些参数中途变化时能否稳定播放取决于解码器和播放器。
 
@@ -14,11 +14,14 @@
 
 		输出容器会根据用户指定扩展名、输入容器和字幕/音频兼容性选择；必要时会切换到 MKV。若用户明确指定了不匹配的扩展名，命令可能先写内部 MKV，再移动成用户指定文件名，并提示实际容器。合并完成后会尽量写入码率、时长、帧率等流标签，并修正 Matroska 的 FrameRate/DefaultDuration 元素。
 
+	.PARAMETER 输入文件
+		要合并的文件路径数组（第一个位置参数）。显式指定时优先于列表文件和剪贴板，且不能与 -列表文件 同时使用。每个元素会去除首尾空白和包裹引号。
+
 	.PARAMETER 输出文件
-		目标输出文件路径。默认值为 .\merged.mkv。若显式指定路径但不带扩展名，会按实际输出容器补扩展名；若显式指定了扩展名，最终文件名会尽量保持该扩展名，即使内部实际容器因兼容性改为 MKV。
+		目标输出文件路径。默认值为 .\merged.mkv（第二个位置参数）。若显式指定路径但不带扩展名，会按实际输出容器补扩展名；若显式指定了扩展名，最终文件名会尽量保持该扩展名，即使内部实际容器因兼容性改为 MKV。
 
 	.PARAMETER 列表文件
-		包含输入文件路径的 UTF-8 文本文件。显式传入时必须存在。未显式传入时，不使用参数默认值读取文件，而是从剪贴板读取路径列表。
+		包含输入文件路径的 UTF-8 文本文件。显式传入时必须存在，且不能与 -输入文件 同时指定。未显式传入时，不使用参数默认值读取文件，而是回退到剪贴板读取路径列表。
 
 	.PARAMETER 不兼容策略
 		当无法避免重编码且宽度、高度、帧率、采样率或声道数不一致时，选择目标参数的策略。Min 选择较小值，Max 选择较大值。默认 Min。
@@ -33,9 +36,15 @@
 		按列表文件中的顺序合并所有片段。
 
 	.EXAMPLE
-		超级合并 'D:\合集.mkv'
+		超级合并 'D:\片段1.ts' 'D:\片段2.ts' -输出文件 'D:\合集.mkv'
 
-		从剪贴板读取路径列表，并输出到 D:\合集.mkv。
+		直接指定要合并的文件（第一个位置参数为 -输入文件 数组），输出到 D:\合集.mkv。
+
+	.EXAMPLE
+		超级合并 -输出文件 'D:\合集.mkv'
+
+		不传 -输入文件/-列表文件 时从剪贴板读取路径列表，并输出到 D:\合集.mkv。
+		注意：不使用 -输入文件 时，路径参数请通过具名参数 -输出文件 传入（位置参数 0 是 -输入文件）。
 
 	.EXAMPLE
 		超级合并 -输出文件 'D:\合集.mkv' -列表文件 'D:\列表.txt' -不兼容策略 Max -详细模式
@@ -48,12 +57,15 @@
 	[CmdletBinding()]
 	param(
 		[Parameter(Mandatory = $false, Position = 0)]
-		[string]$输出文件 = '.\merged.mkv',
+		[string[]]$输入文件 = @(),
 
 		[Parameter(Mandatory = $false, Position = 1)]
-		[string]$列表文件 = '.\要合并的文件列表.txt',
+		[string]$输出文件 = '.\merged.mkv',
 
 		[Parameter(Mandatory = $false, Position = 2)]
+		[string]$列表文件 = '.\要合并的文件列表.txt',
+
+		[Parameter(Mandatory = $false, Position = 3)]
 		[ValidateSet('Min', 'Max')]
 		[string]$不兼容策略 = 'Min',
 
@@ -68,9 +80,18 @@
 
 	确保_ffmpeg_ffprobe_可用
 
+	$传入输入文件 = $PSBoundParameters.ContainsKey('输入文件')
 	$列表文件是否显式指定 = $PSBoundParameters.ContainsKey('列表文件')
 
-	if (-not $列表文件是否显式指定) {
+	if ($传入输入文件 -and $列表文件是否显式指定) {
+		throw '-输入文件 与 -列表文件 不能同时指定：传入文件路径数组时不再读取列表文件，请二选一。'
+	}
+
+	$输入文件列表 = @()
+	if ($传入输入文件) {
+		$输入文件列表 = @($输入文件 | ForEach-Object { 规范化_用户路径参数 -Path $_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+		if ($输入文件列表.Count -lt 1) { throw '传入的 -输入文件 为空。请提供至少一个文件路径，或改用 -列表文件/剪贴板。' }
+	} elseif (-not $列表文件是否显式指定) {
 		if (-not (Get-Command Get-Clipboard -ErrorAction SilentlyContinue)) {
 			throw "未显式指定 -列表文件，且当前环境不支持 Get-Clipboard。请显式指定 -列表文件，或升级/启用剪贴板 cmdlet。"
 		}
@@ -218,25 +239,47 @@
 		# 外部裁切工具 -ss copy 产生的源段常见问题：容器 CodecPrivate（H.264 extradata）里没有有效 SPS/PPS
 		# （ffprobe 解析不出 profile/pix_fmt 就是这种情形）。mkvmerge --split parts 会把源的
 		# CodecPrivate 原样带到 clip 里，且 H.264 以 AVCC 格式（length-prefix）存储。
-		# BSF 链：h264_mp4toannexb → 把 AVCC 转为 Annex-B（添加 0x000001 start code，使后续 BSF 可
-		# 找到 SPS/PPS NALU）；extract_extradata → 从 Annex-B 码流中提取 SPS/PPS 写回容器 extradata。
-		# matroska muxer 收到 Annex-B 数据时会自动转回 AVCC 写入文件。
+		# BSF 链按视频编码选择：H.264 用 h264_mp4toannexb、HEVC 用 hevc_mp4toannexb，把容器里的
+		# AVCC/hvcC（length-prefix）转为 Annex-B（添加 0x000001 start code，使后续 BSF 可找到
+		# SPS/PPS NALU）；extract_extradata → 从 Annex-B 码流中提取 SPS/PPS 写回容器 extradata。
+		# matroska muxer 收到 Annex-B 数据时会自动转回容器格式写入文件。
 		# 不主动归零时间戳：clip 的源 pts 可能非零（如 447s 起），但后续 concat demuxer 会基于每段
 		# start_time/duration 重建连续时间戳，源 pts 偏移不影响结果。
 		# 非致命：若某段 BSF 修复后仍无视频包（极少数情形），降级为直接使用原始 clip，
 		# profile 可能仍为 unknown，但合并本身不中断。
 		Write-Host "修复每段 clip 的 SPS/PPS 容器元数据（独立处理、纯 copy）..." -ForegroundColor Cyan
+		# 同构路径各段轨道布局相同，按第一段的视频编码选择 extradata 修复用的 BSF 链；
+		# 其它编码没有通用修复手段，直接跳过修复使用原 clip。
+		$bsf修复链 = switch ([string]$媒体信息列表[0].Video.Codec) {
+			'h264' { 'h264_mp4toannexb,extract_extradata' }
+			'hevc' { 'hevc_mp4toannexb,extract_extradata' }
+			default { $null }
+		}
+
 		$修复后列表 = New-Object System.Collections.Generic.List[string]
 		for ($i = 0; $i -lt $临时段列表.Count; $i++) {
 			$clip = $临时段列表[$i]
+			if (-not $bsf修复链) {
+				$修复后列表.Add($clip)
+				continue
+			}
 			$fixed = Join-Path $工作目录 ("fixed_{0:D3}.mkv" -f ($i+1))
-			调用_外部命令 -Exe 'ffmpeg' -ArgumentList @(
-				'-nostdin','-v','error','-y',
-				'-i', $clip,
-				'-map','0','-c','copy',
-				'-bsf:v','h264_mp4toannexb,extract_extradata',
-				$fixed
-			) | Out-Null
+			try {
+				调用_外部命令 -Exe 'ffmpeg' -ArgumentList @(
+					'-nostdin','-v','error','-y',
+					'-i', $clip,
+					'-map','0','-c','copy',
+					'-bsf:v', $bsf修复链,
+					$fixed
+				) | Out-Null
+			} catch {
+				# BSF 修复异常：降级为直接使用原始 clip，合并流程不中断。
+				Write-Warning ("第 {0} 段 extradata 修复失败，降级使用原始 clip：{1}" -f ($i+1), $_.Exception.Message)
+				Remove-Item -LiteralPath $fixed -Force -ErrorAction SilentlyContinue
+				$global:LASTEXITCODE = 0
+				$修复后列表.Add($clip)
+				continue
+			}
 			# 校验：修复后的 clip 必须能读出视频包。
 			$gotVideo = $false
 			if (Test-Path -LiteralPath $fixed) {
@@ -680,6 +723,9 @@
 		}
 
 		# ---- 视频：能 copy 就 copy；否则仅为“本段不符合目标参数”的片段做标准化 ----
+		# H.264/HEVC 标准允许码流中途在 IDR 关键帧处携带新的 SPS/PPS 参数集，即同一条视频轨
+		# 中途变更参数集是合法码流；concat copy 会保留各段自带参数集，规范解码器会在边界重新
+		# 初始化。个别播放器对中途参数集变化支持不佳（花屏/卡顿），按标准执行、不额外全量重编码。
 		$本段视频已符合目标 = $true
 		if ($null -eq $info.Video) { $本段视频已符合目标 = $false }
 		if ($本段视频已符合目标 -and (-not [string]::IsNullOrWhiteSpace($目标视频编码)) -and ($info.Video.Codec -ne $目标视频编码)) { $本段视频已符合目标 = $false }
