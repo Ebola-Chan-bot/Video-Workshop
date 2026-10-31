@@ -363,16 +363,34 @@ function 调用_外部命令 {
 			return [pscustomobject]@{ StdOut = ''; StdErr = '' }
 		}
 
-		$all = & $Exe @ArgumentList 2>&1
-		$exit = $LASTEXITCODE
-		$text = ($all | Out-String)
-		if ($script:输出外部进程信息 -and $CaptureOutput -and $显示捕获输出 -and -not [string]::IsNullOrWhiteSpace($text)) {
-			Write-Host $text
+		$转义参数列表 = @($ArgumentList | ForEach-Object {
+			$文本 = [string]$_
+			if ($文本 -notmatch '[\s"]') { return $文本 }
+			$内容 = [regex]::Replace($文本, '(\\*)"', '$1$1\"')
+			$内容 = [regex]::Replace($内容, '(\\+)$', '$1$1')
+			return '"' + $内容 + '"'
+		})
+		$标准输出文件 = Join-Path ([System.IO.Path]::GetTempPath()) ('视频工坊-stdout-' + [Guid]::NewGuid().ToString('N') + '.txt')
+		$标准错误文件 = Join-Path ([System.IO.Path]::GetTempPath()) ('视频工坊-stderr-' + [Guid]::NewGuid().ToString('N') + '.txt')
+		$进程 = $null
+		try {
+			$进程 = Start-Process -FilePath $Exe -ArgumentList $转义参数列表 -RedirectStandardOutput $标准输出文件 -RedirectStandardError $标准错误文件 -NoNewWindow -Wait -PassThru
+			$exit = $进程.ExitCode
+			$stdout = [System.IO.File]::ReadAllText($标准输出文件)
+			$stderr = [System.IO.File]::ReadAllText($标准错误文件)
+		} finally {
+			if ($进程) { $进程.Dispose() }
+			Remove-Item -LiteralPath $标准输出文件, $标准错误文件 -Force -ErrorAction SilentlyContinue
+		}
+		$global:LASTEXITCODE = $exit
+		if ($script:输出外部进程信息 -and $CaptureOutput -and $显示捕获输出) {
+			if (-not [string]::IsNullOrWhiteSpace($stdout)) { Write-Host $stdout }
+			if (-not [string]::IsNullOrWhiteSpace($stderr)) { Write-Host $stderr }
 		}
 		if ($exit -ne 0 -and ($AllowedExitCodes -notcontains $exit)) {
-			throw "外部命令失败：$Exe $($ArgumentList -join ' ') (exit=$exit)`n$text"
+			throw "外部命令失败：$Exe $($ArgumentList -join ' ') (exit=$exit)`n$stdout$stderr"
 		}
-		return [pscustomobject]@{ StdOut = $text; StdErr = '' }
+		return [pscustomobject]@{ StdOut = $stdout; StdErr = $stderr }
 	} finally {
 		$ErrorActionPreference = $oldEap
 	}

@@ -8,7 +8,7 @@
 
 		列表文件支持一行一个路径、带引号路径，以及ffmpeg concat 形式的 file '路径'；空行和以 # 开头的注释会被忽略。
 
-		同构快速路径用于流数量相同且每个流索引位置的 codec_type/codec_name 都相同的输入。该路径会先用 mkvmerge 按真实视频包 PTS 精剪每段，再用 ffmpeg 修复 H.264 SPS/PPS 容器元数据并通过 concat demuxer 无损拼接，尽量保留所有轨道。此路径的判定依据是“轨道布局和编码名”，不会进一步比较分辨率、像素格式、帧率等参数；这些参数中途变化时能否稳定播放取决于解码器和播放器。
+		同构快速路径用于流数量相同且每个流索引位置的 codec_type/codec_name 都相同的输入。该路径会先用 mkvmerge 按真实视频包 PTS 精剪每段，再用 ffmpeg 修复 H.264 SPS/PPS 容器元数据并通过 concat demuxer 无损拼接，尽量保留所有轨道；RM/RMVB 改用 rmeditor 原生追加，保持 RealMedia 容器。此路径的判定依据是“轨道布局和编码名”，不会进一步比较分辨率、像素格式、帧率等参数；这些参数中途变化时能否稳定播放取决于解码器和播放器。
 
 		标准化路径用于轨道布局不同或编码布局不一致的输入。视频、音频、字幕会分别判断：兼容则 copy，不兼容或缺失时只标准化对应部分。视频会比较编码、宽度、高度、像素格式和帧率；如果只有分辨率不同，且当前视频编码允许同一视频轨中途改变分辨率（当前按 H.264/HEVC/AV1/VP9 判断），会保留各段原分辨率并继续 copy。若视频仍需因为编码、像素格式、帧率等其它原因重编码，则按 -不兼容策略 选择统一宽高/帧率，必要时缩放并补边，编码器优先 GPU（NVENC/QSV/AMF），否则回退 CPU。音频会比较编码、采样率和声道数；不兼容或缺失时补静音并重编码，通常输出 AAC，Max 模式遇到无损音频时会优先保住无损目标。字幕会处理 ASS/SRT 互转、缺失字幕占位，以及位图字幕的限制。
 
@@ -18,7 +18,7 @@
 		要合并的文件路径数组（第一个位置参数）。显式指定时优先于列表文件和剪贴板，且不能与 -列表文件 同时使用。每个元素会去除首尾空白和包裹引号。
 
 	.PARAMETER 输出文件
-		目标输出文件路径。默认值为 .\merged.mkv（第二个位置参数）。若显式指定路径但不带扩展名，会按实际输出容器补扩展名；若显式指定了扩展名，最终文件名会尽量保持该扩展名，即使内部实际容器因兼容性改为 MKV。
+		目标输出文件路径（第二个位置参数）。省略时输出到第一个输入文件所在目录，文件名使用“合并+第一个输入文件的名称”，并按实际容器补扩展名。若指定路径不带扩展名，会按实际输出容器补扩展名；若显式指定了扩展名，最终文件名会尽量保持该扩展名，即使内部实际容器因兼容性改为 MKV。
 
 	.PARAMETER 列表文件
 		包含输入文件路径的 UTF-8 文本文件。显式传入时必须存在，且不能与 -输入文件 同时指定。未显式传入时，不使用参数默认值读取文件，而是回退到剪贴板读取路径列表。
@@ -52,7 +52,7 @@
 		在参数不一致时选择较大的目标规格，显示外部工具输出，并保留临时目录用于检查。
 
 	.NOTES
-		依赖 ffmpeg 和 ffprobe；同构快速路径还依赖 mkvmerge。命令会尝试自动检测或安装缺失依赖。输出成功不等同于所有播放器都能完美处理非常规码流，尤其是同一视频轨中途变更分辨率或参数集的文件。
+		依赖 ffmpeg 和 ffprobe；同构快速路径还依赖 mkvmerge，RM/RMVB 同构合并使用 rmeditor。命令会尝试自动检测或安装缺失依赖。输出成功不等同于所有播放器都能完美处理非常规码流，尤其是同一视频轨中途变更分辨率或参数集的文件。
 	#>
 	[CmdletBinding()]
 	param(
@@ -60,7 +60,7 @@
 		[string[]]$输入文件 = @(),
 
 		[Parameter(Mandatory = $false, Position = 1)]
-		[string]$输出文件 = '.\merged.mkv',
+		[string]$输出文件 = '.\merged',
 
 		[Parameter(Mandatory = $false, Position = 2)]
 		[string]$列表文件 = '.\要合并的文件列表.txt',
@@ -119,7 +119,9 @@
 
 	# 记录：用户是否显式传入了 -输出文件（含位置参数）。
 	$用户明确指定输出文件 = $PSBoundParameters.ContainsKey('输出文件')
-	$默认输出文件 = $输出文件
+	$第一输入完整路径 = (Resolve-Path -LiteralPath $输入文件列表[0]).Path
+	$默认输出文件 = Join-Path (Split-Path -Parent $第一输入完整路径) ('合并+' + (Split-Path -Leaf $第一输入完整路径))
+	$输出文件 = if ($用户明确指定输出文件) { [string]$PSBoundParameters['输出文件'] } else { $默认输出文件 }
 	$用户输出文件 = if ($用户明确指定输出文件) { $输出文件 } else { $null }
 
 	Write-Host "探测媒体参数..." -ForegroundColor Cyan
@@ -144,6 +146,17 @@
 
 	if ($同构) {
 		Write-Host ("检测到所有输入轨道布局相同（{0} 路流），启用同构快速路径：精剪后无损合并全部轨道。" -f $媒体信息列表[0].StreamCount) -ForegroundColor Green
+
+		$全部RealMedia = (@($输入文件列表 | Where-Object { [System.IO.Path]::GetExtension($_).ToLowerInvariant() -notin @('.rm', '.rmvb') })).Count -eq 0
+		if ($全部RealMedia) {
+			$最终输出文件 = $输出文件
+			if (-not [System.IO.Path]::GetExtension($最终输出文件)) { $最终输出文件 += '.rmvb' }
+			Write-Host 'RM/RMVB 使用 rmeditor 原生追加合并：保留 RealMedia 容器，所有轨道均不转码。' -ForegroundColor Yellow
+			合并_RealMedia片段 -输入文件列表 $输入文件列表 -输出文件 $最终输出文件
+			Write-Host "完成：$最终输出文件" -ForegroundColor Green
+			$global:LASTEXITCODE = 0
+			return
+		}
 
 		# mkvmerge 是专为 Matroska 多轨 append 设计的工具，对外部裁切工具 -ss copy 产生的 pts 异常段比 ffmpeg concat 更健壮。
 		确保_mkvmerge_可用
