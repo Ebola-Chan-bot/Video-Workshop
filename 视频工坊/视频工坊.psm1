@@ -5,14 +5,14 @@ $script:视频工坊根目录 = $PSScriptRoot
 $script:自定义ffmpeg目录 = $null
 $script:自定义ffmpeg缺失已警告 = $false
 
-$privateRoot = Join-Path -Path $PSScriptRoot -ChildPath 'private'
-$publicRoot = Join-Path -Path $PSScriptRoot -ChildPath 'public'
+$私有目录 = Join-Path -Path $PSScriptRoot -ChildPath '私有'
+$公开目录 = Join-Path -Path $PSScriptRoot -ChildPath '公开'
 
-Get-ChildItem -LiteralPath $privateRoot -Filter '*.ps1' -File -ErrorAction SilentlyContinue |
+Get-ChildItem -LiteralPath $私有目录 -Filter '*.ps1' -File -ErrorAction SilentlyContinue |
 	Sort-Object Name |
 	ForEach-Object { . $_.FullName }
 
-Get-ChildItem -LiteralPath $publicRoot -Filter '*.ps1' -File -ErrorAction SilentlyContinue |
+Get-ChildItem -LiteralPath $公开目录 -Filter '*.ps1' -File -ErrorAction SilentlyContinue |
 	Sort-Object Name |
 	ForEach-Object { . $_.FullName }
 

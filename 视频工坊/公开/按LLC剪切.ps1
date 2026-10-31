@@ -4,9 +4,7 @@
 		按 LosslessCut 的 LLC 项目文件，将视频剪成多个片段文件。
 
 	.DESCRIPTION
-		读取 version 2 的 .llc 项目，使用 mediaFileName 定位同目录的源媒体，只处理 cutSegments 中 selected 为 true 的片段。
-		start 和 end 的单位为秒。两个端点分别对齐到距离最近的关键帧，而不是精确切在指定时间；对齐后若起点不早于终点，则报错并停止。
-		所有轨道均不转码，只做流复制剪切。普通视频由 ffmpeg 处理，RM/RMVB 由 RealMedia Editor 原生处理，均保留源扩展名。片段默认使用源文件名、对齐后的时间戳和片段序号命名，源文件保持不变。
+		读取 version 2 的 .llc 项目，使用 mediaFileName 定位同目录的源媒体，只处理 cutSegments 中 selected 为 true 的片段。start和 end 的单位为秒。两个端点分别对齐到距离最近的关键帧，而不是精确切在指定时间；对齐后若起点不早于终点，则报错并停止。所有轨道均不转码，只做流复制剪切。普通视频由 ffmpeg 处理，RM/RMVB 由 RealMedia Editor 原生处理，均保留源扩展名。片段默认使用源文件名、对齐后的时间戳和片段序号命名，源文件保持不变。
 
 	.PARAMETER 项目文件
 		要读取的 .llc 项目文件路径。支持带尾随逗号的 LLC JSONC 格式。
